@@ -12,6 +12,7 @@ from pyspark.ml.feature import VectorAssembler
 from pyspark.ml.classification import LogisticRegressionModel
 from pyspark.sql.functions import col
 from pyspark.sql import SparkSession
+from pyspark.sql.types import IntegerType
 
 
 def get_arguments():
@@ -24,6 +25,30 @@ def get_arguments():
     return args
 
 
+# todo complete this
+def clean_data(df):
+    return df
+
+
+def cast_data(df):
+    return df.select(col('id').cast('int'),
+                     *(col(c).cast("float").alias(c) for c in list(set(df.columns) - {'id'})))
+
+
+def extract_features(df):
+    required_features = list(set(df.columns) - {'id', 'label'})
+    required_features.sort()
+    assembler = VectorAssembler(inputCols=required_features, outputCol='features')
+    return assembler.transform(df)
+
+
+def mature_data(df):
+    df = cast_data(df)
+    df = clean_data(df)
+    df = extract_features(df)
+    return df
+
+
 def train(train_path, model_name):
     if model_name is None:
         model_name = 'model'
@@ -34,45 +59,18 @@ def train(train_path, model_name):
     spark = SparkSession \
         .builder \
         .master('local') \
-        .appName('Titanic Data') \
+        .appName('Logistic App') \
         .getOrCreate()
 
     # todo Delete the next line
     spark.sparkContext.setLogLevel('OFF')
 
-    for i in range(5):
-        print()
-    df = spark.read.csv(train_path, header=True)
+    raw_data = spark.read.csv(train_path, header=True)
 
-    dataset = df.select(col('label').cast('float'),
-                        col('Embarked_Code').cast('float'),
-                        col('Sex_Code').cast('float'),
-                        col('Pclass').cast('float'),
-                        col('Title_Code').cast('float'),
-                        col('FamilySize').cast('float'),
-                        col('AgeBin_Code').cast('float'),
-                        col('FareBin_Code').cast('float')
-                        )
-    dataset.show()
-
-    print(df.dtypes)
-
-    required_features = ['Embarked_Code',
-                         'Sex_Code',
-                         'Pclass',
-                         'Title_Code',
-                         'FamilySize',
-                         'AgeBin_Code',
-                         'FareBin_Code',
-                         ]
-
-    assembler = VectorAssembler(inputCols=required_features, outputCol='features')
-    transformed_data = assembler.transform(dataset)
-
-    print(transformed_data.show(5))
+    dataset = mature_data(raw_data)
 
     lr = LogisticRegression(maxIter=10)
-    lrModel = lr.fit(transformed_data)
+    lrModel = lr.fit(dataset)
 
     lrModel.save(path=model_path)
 
@@ -88,46 +86,20 @@ def predict(test_path, model_name, output_path):
     spark = SparkSession \
         .builder \
         .master('local') \
-        .appName('Titanic Data') \
+        .appName('Logistic App') \
         .getOrCreate()
 
     # todo Delete the next line
     spark.sparkContext.setLogLevel('OFF')
 
-    for i in range(5):
-        print()
-
     model = LogisticRegressionModel.load(path=model_path)
+    raw_data = spark.read.csv(test_path, header=True)
 
-    df = spark.read.csv(test_path, header=True)
+    dataset = mature_data(raw_data)
 
-    dataset = df.select(col('Embarked_Code').cast('float'),
-                        col('Sex_Code').cast('float'),
-                        col('Pclass').cast('float'),
-                        col('Title_Code').cast('float'),
-                        col('FamilySize').cast('float'),
-                        col('AgeBin_Code').cast('float'),
-                        col('FareBin_Code').cast('float')
-                        )
-    dataset.show()
-
-    print(df.dtypes)
-
-    required_features = ['Embarked_Code',
-                         'Sex_Code',
-                         'Pclass',
-                         'Title_Code',
-                         'FamilySize',
-                         'AgeBin_Code',
-                         'FareBin_Code',
-                         ]
-
-    assembler = VectorAssembler(inputCols=required_features, outputCol='features')
-    transformed_data = assembler.transform(dataset)
-
-    pred = model.transform(transformed_data).select('prediction')
+    pred = model.transform(dataset).select(col('id'), col('prediction').cast('int'))
     pred = pred.toPandas()
-    pred.to_csv(output_path)
+    pred.to_csv(output_path, index=False)
 
 
 if __name__ == '__main__':
