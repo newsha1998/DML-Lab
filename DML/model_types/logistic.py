@@ -21,6 +21,8 @@ def get_arguments():
     parser.add_argument('-M', '--model')
     parser.add_argument('-P', '--predict')
     parser.add_argument('-O', '--output')
+    parser.add_argument('--ridge', action="store_true")
+    parser.add_argument('--lasso', action="store_true")
     args = parser.parse_args()
     return args
 
@@ -49,7 +51,7 @@ def mature_data(df):
     return df
 
 
-def train(train_path, model_name):
+def train(train_path, model_name, elasticNetParam=0):
     if model_name is None:
         model_name = 'model'
     model_path = os.path.join(dirname(os.getcwd()), 'models', model_name)
@@ -69,7 +71,7 @@ def train(train_path, model_name):
 
     dataset = mature_data(raw_data)
 
-    lr = LogisticRegression(maxIter=10)
+    lr = LogisticRegression(maxIter=10, elasticNetParam=elasticNetParam)
     lrModel = lr.fit(dataset)
 
     lrModel.save(path=model_path)
@@ -109,9 +111,17 @@ if __name__ == '__main__':
     test_path = args.predict
     model_name = args.model
     output_path = args.output
+    ridge = args.ridge
+    lasso = args.lasso
 
     if train_path is not None:
-        train(train_path, model_name)
+        if ridge:
+            train(train_path, model_name, elasticNetParam=0)
+        else:
+            if lasso:
+                train(train_path, model_name, elasticNetParam=1)
+            else:
+                train(train_path, model_name)
 
     if test_path is not None:
         predict(test_path, model_name, output_path)
