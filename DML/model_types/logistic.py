@@ -3,16 +3,12 @@
 import os
 import argparse
 from os.path import dirname
-from pathlib import Path
-import numpy as np
-import pandas as pd
 import shutil
 from pyspark.ml.classification import LogisticRegression
-from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.feature import VectorAssembler, StandardScaler
 from pyspark.ml.classification import LogisticRegressionModel
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, when, trim, isnan
 from pyspark.sql import SparkSession
-from pyspark.sql.types import IntegerType
 
 
 def get_arguments():
@@ -29,7 +25,11 @@ def get_arguments():
 
 # todo complete this
 def clean_data(df):
-    return df
+    return df.select([to_null(c).alias(c) for c in df.columns]).na.drop()
+
+
+def to_null(col_name):
+    return when(~(col(col_name).isNull() | isnan(col(col_name)) | (trim(col(col_name)) == "")), col(col_name))
 
 
 def cast_data(df):
@@ -44,10 +44,21 @@ def extract_features(df):
     return assembler.transform(df)
 
 
+def scale_features(df):
+    scalar = StandardScaler(inputCol='features', outputCol='scaled_features', withStd=True, withMean=False)
+    model = scalar.fit(df)
+    sc_df = model.transform(df)
+    sc_df = sc_df.drop('features')
+    sc_df = sc_df.select(*(col(c) for c in list(set(sc_df.columns) - {'scaled_features'})),
+                         col('scaled_features').alias('features'))
+    return sc_df
+
+
 def mature_data(df):
     df = cast_data(df)
     df = clean_data(df)
     df = extract_features(df)
+    df = scale_features(df)
     return df
 
 
@@ -99,9 +110,9 @@ def predict(test_path, model_name, output_path):
 
     dataset = mature_data(raw_data)
 
-    pred = model.transform(dataset).select(col('id'), col('prediction').cast('int'))
-    pred = pred.toPandas()
-    pred.to_csv(output_path, index=False)
+    prediction_df = model.transform(dataset).select(col('id'), col('prediction').cast('int'))
+    prediction_df = prediction_df.toPandas()
+    prediction_df.to_csv(output_path, index=False)
 
 
 if __name__ == '__main__':
