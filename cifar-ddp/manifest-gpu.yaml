@@ -1,0 +1,22 @@
+apiVersion: "kubeflow.org/v1"
+kind: "PyTorchJob"
+metadata:
+  name: "pytorch-cifar-gpu"
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: OnFailure
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+        spec:
+          containers:
+            - name: pytorch
+              image: kubeflow/pytorch-cifar:1.0
+              args: [--cuda]
+              # Comment out the below resources to use the CPU.
+              resources: 
+                limits:
+                  nvidia.com/gpu: 1
