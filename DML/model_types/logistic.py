@@ -10,6 +10,9 @@ from pyspark.ml.classification import LogisticRegressionModel
 from pyspark.sql.functions import col, when, trim, isnan
 from pyspark.sql import SparkSession
 
+HDFS_HOME = "hdfs://localhost:8020"
+HDFS_DATASETS = HDFS_HOME + "/data/"
+
 
 def get_arguments():
     parser = argparse.ArgumentParser()
@@ -17,8 +20,6 @@ def get_arguments():
     parser.add_argument('-M', '--model')
     parser.add_argument('-P', '--predict')
     parser.add_argument('-O', '--output')
-    parser.add_argument('--ridge', action="store_true")
-    parser.add_argument('--lasso', action="store_true")
     args = parser.parse_args()
     return args
 
@@ -62,7 +63,7 @@ def mature_data(df):
     return df
 
 
-def train(train_path, model_name, elasticNetParam=0):
+def train(train_dataset, model_name):
     if model_name is None:
         model_name = 'model'
     model_path = os.path.join(dirname(os.getcwd()), 'models', model_name)
@@ -78,17 +79,20 @@ def train(train_path, model_name, elasticNetParam=0):
     # todo Delete the next line
     spark.sparkContext.setLogLevel('OFF')
 
+
+    #todo change this
+    train_path = HDFS_DATASETS + train_dataset
     raw_data = spark.read.csv(train_path, header=True)
 
     dataset = mature_data(raw_data)
 
-    lr = LogisticRegression(maxIter=10, elasticNetParam=elasticNetParam)
+    lr = LogisticRegression(maxIter=10)
     lrModel = lr.fit(dataset)
 
     lrModel.save(path=model_path)
 
 
-def predict(test_path, model_name, output_path):
+def predict(test_dataset, model_name, output_path):
     if model_name is None:
         model_name = 'model'
     if output_path is None:
@@ -106,6 +110,9 @@ def predict(test_path, model_name, output_path):
     spark.sparkContext.setLogLevel('OFF')
 
     model = LogisticRegressionModel.load(path=model_path)
+
+    #todo change this
+    test_path = HDFS_DATASETS + train_dataset
     raw_data = spark.read.csv(test_path, header=True)
 
     dataset = mature_data(raw_data)
@@ -118,21 +125,13 @@ def predict(test_path, model_name, output_path):
 if __name__ == '__main__':
     args = get_arguments()
 
-    train_path = args.train
-    test_path = args.predict
+    train_dataset = args.train
+    test_dataset = args.predict
     model_name = args.model
     output_path = args.output
-    ridge = args.ridge
-    lasso = args.lasso
 
-    if train_path is not None:
-        if ridge:
-            train(train_path, model_name, elasticNetParam=0)
-        else:
-            if lasso:
-                train(train_path, model_name, elasticNetParam=1)
-            else:
-                train(train_path, model_name)
+    if train_dataset is not None:
+        train(train_dataset, model_name)
 
-    if test_path is not None:
-        predict(test_path, model_name, output_path)
+    if test_dataset is not None:
+        predict(test_dataset, model_name, output_path)
