@@ -112,7 +112,7 @@ def predict(test_dataset, model_name, output_path):
     model = LogisticRegressionModel.load(path=model_path)
 
     #todo change this
-    test_path = HDFS_DATASETS + train_dataset
+    test_path = HDFS_DATASETS + test_dataset
     raw_data = spark.read.csv(test_path, header=True)
 
     dataset = mature_data(raw_data)
