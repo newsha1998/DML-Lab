@@ -12,7 +12,7 @@ from pyspark.sql import SparkSession
 
 HDFS_HOME = "hdfs://localhost:8020"
 HDFS_DATASETS = HDFS_HOME + "/data/"
-
+HDFS_MODElS = HDFS_HOME + "/models/"
 
 def get_arguments():
     parser = argparse.ArgumentParser()
@@ -64,11 +64,15 @@ def mature_data(df):
 
 
 def train(train_dataset, model_name):
+    # if model_name is None:
+    #     model_name = 'model'
+    # model_path = os.path.join(dirname(os.getcwd()), 'models', model_name)
+    # if os.path.isdir(model_path):
+    #     shutil.rmtree(model_path)
+
     if model_name is None:
         model_name = 'model'
-    model_path = os.path.join(dirname(os.getcwd()), 'models', model_name)
-    if os.path.isdir(model_path):
-        shutil.rmtree(model_path)
+    model_path = HDFS_MODElS + model_name
 
     spark = SparkSession \
         .builder \
@@ -93,12 +97,16 @@ def train(train_dataset, model_name):
 
 
 def predict(test_dataset, model_name, output_path):
-    if model_name is None:
-        model_name = 'model'
+    # if model_name is None:
+    #     model_name = 'model'
     if output_path is None:
         output_path = os.path.join(dirname(os.getcwd()), 'predict.csv')
 
-    model_path = os.path.join(dirname(os.getcwd()), 'models', model_name)
+    # model_path = os.path.join(dirname(os.getcwd()), 'models', model_name)
+
+    if model_name is None:
+        model_name = 'model'
+    model_path = HDFS_MODElS + model_name
 
     spark = SparkSession \
         .builder \
