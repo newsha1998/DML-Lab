@@ -104,9 +104,9 @@ def main(args):
 
 parser = argparse.ArgumentParser(description='PyTorch Cifar10 Example')
 parser.add_argument('--batch-size', type=int, default=64,
-                    help='input batch size for training (default: 64)')
+                    help='input_file batch size for training (default: 64)')
 parser.add_argument('--test-batch-size', type=int, default=1000,
-                    help='input batch size for testing (default: 1000)')
+                    help='input_file batch size for testing (default: 1000)')
 parser.add_argument('--epochs', type=int, default=1,
                     help='number of epochs to train (default: 1)')
 parser.add_argument('--lr', type=float, default=0.001,

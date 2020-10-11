@@ -9,10 +9,13 @@ from pyspark.ml.feature import VectorAssembler, StandardScaler
 from pyspark.ml.classification import LogisticRegressionModel
 from pyspark.sql.functions import col, when, trim, isnan
 from pyspark.sql import SparkSession
+import pandas as pd
 
 HDFS_HOME = "hdfs://localhost:8020"
 HDFS_DATASETS = HDFS_HOME + "/data/"
 HDFS_MODElS = HDFS_HOME + "/models/"
+HDFS_CONFIG = "/config/config.csv"
+
 
 def get_arguments():
     parser = argparse.ArgumentParser()
@@ -63,7 +66,7 @@ def mature_data(df):
     return df
 
 
-def train(train_dataset, model_name):
+def train(train_dataset, model_name, spark):
     # if model_name is None:
     #     model_name = 'model'
     # model_path = os.path.join(dirname(os.getcwd()), 'models', model_name)
@@ -74,29 +77,22 @@ def train(train_dataset, model_name):
         model_name = 'model'
     model_path = HDFS_MODElS + model_name
 
-    spark = SparkSession \
-        .builder \
-        .master('local') \
-        .appName('Logistic App') \
-        .getOrCreate()
-
     # todo Delete the next line
     spark.sparkContext.setLogLevel('OFF')
 
-
-    #todo change this
+    # todo change this
     train_path = HDFS_DATASETS + train_dataset
     raw_data = spark.read.csv(train_path, header=True)
 
     dataset = mature_data(raw_data)
 
     lr = LogisticRegression(maxIter=10)
-    lrModel = lr.fit(dataset)
+    lr_model = lr.fit(dataset)
 
-    lrModel.save(path=model_path)
+    lr_model.save(path=model_path)
 
 
-def predict(test_dataset, model_name, output_path):
+def predict(test_dataset, model_name, output_path, spark):
     # if model_name is None:
     #     model_name = 'model'
     if output_path is None:
@@ -108,18 +104,12 @@ def predict(test_dataset, model_name, output_path):
         model_name = 'model'
     model_path = HDFS_MODElS + model_name
 
-    spark = SparkSession \
-        .builder \
-        .master('local') \
-        .appName('Logistic App') \
-        .getOrCreate()
-
     # todo Delete the next line
     spark.sparkContext.setLogLevel('OFF')
 
     model = LogisticRegressionModel.load(path=model_path)
 
-    #todo change this
+    # todo change this
     test_path = HDFS_DATASETS + test_dataset
     raw_data = spark.read.csv(test_path, header=True)
 
@@ -130,16 +120,36 @@ def predict(test_dataset, model_name, output_path):
     prediction_df.to_csv(output_path, index=False)
 
 
+def read_config(spark):
+    config_file = HDFS_HOME + HDFS_CONFIG
+    config = spark.read.csv(config_file, header=True)
+    config = config.toPandas()
+    config.set_index('key')
+    config_out = {}
+    config_out['mode'] = config['mode']
+    config_out['input_file'] = config['input_file']
+    config_out['output'] = config['output']
+    config_out['model'] = config['model']
+
+    return config_out
+
 if __name__ == '__main__':
-    args = get_arguments()
 
-    train_dataset = args.train
-    test_dataset = args.predict
-    model_name = args.model
-    output_path = args.output
+    spark = SparkSession \
+        .builder \
+        .master('local') \
+        .appName('Logistic App') \
+        .getOrCreate()
 
-    if train_dataset is not None:
-        train(train_dataset, model_name)
+    config = read_config(spark)
 
-    if test_dataset is not None:
-        predict(test_dataset, model_name, output_path)
+    mode = config['mode']
+    infile = config['input_file']
+    model_name = config['model']
+    outfile = config['output']
+
+    if mode == 'train':
+        train(infile, model_name, spark)
+
+    if mode == 'test':
+        predict(infile, model_name, outfile, spark)
