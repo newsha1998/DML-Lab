@@ -126,12 +126,14 @@ def read_config(spark):
     config = config.toPandas()
     config.set_index('key')
     config_out = {}
-    config_out['mode'] = config['mode']
-    config_out['input_file'] = config['input_file']
-    config_out['output'] = config['output']
-    config_out['model'] = config['model']
+    config_out['mode'] = config.loc['mode', 'value']
+    config_out['input'] = config.loc['input', 'value']
+    config_out['output'] = config.loc['output', 'value']
+    config_out['model'] = config.loc['model', 'value']
 
+    print(config.head(10))
     return config_out
+
 
 if __name__ == '__main__':
 
@@ -144,7 +146,7 @@ if __name__ == '__main__':
     config = read_config(spark)
 
     mode = config['mode']
-    infile = config['input_file']
+    infile = config['input']
     model_name = config['model']
     outfile = config['output']
 
