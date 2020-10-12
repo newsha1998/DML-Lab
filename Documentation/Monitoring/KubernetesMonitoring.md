@@ -447,29 +447,29 @@ kubectl get pods -n monitoring
 
 First check the grafana-service pod Ip and then port forward
 
-![img](image/clip_image002.jpg)
+![img](Image/clip_image002.jpg)
 
-![img](image/clip_image004.jpg)
+![img](Image/clip_image004.jpg)
 
  
 
 #### Connect to Prometheus
 
-First check Prometheus-????-server endpoints IP and then port forward as follow:
+First check Prometheus-XXX-server endpoints IP and then port forward as follow:
 
- ![img](image/clip_image006.jpg)
+ ![img](Image/clip_image006.jpg)
 
-![img](image/clip_image008.jpg)
+![img](Image/clip_image008.jpg)
 
 
 
 Connect to Grafana service in url: *http://localhost:3000* and with user:admin password: admin, then create datasourde with follow configuration and create dashboard with Json file. We can download Json file from this Url: *https://grafana.com/grafana/dashboards*
 
-![img](image/clip_image010.jpg)
+![img](Image/clip_image010.jpg)
 
-![img](image\clip_image012.jpg)
+![img](Image\clip_image012.jpg)
 
-![img](image\clip_image014.jpg)
+![img](Image\clip_image014.jpg)
 
  
 
