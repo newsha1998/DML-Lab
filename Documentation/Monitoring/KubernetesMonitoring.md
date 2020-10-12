@@ -467,9 +467,9 @@ Connect to Grafana service in url: *http://localhost:3000* and with user:admin p
 
 ![img](Image/clip_image010.jpg)
 
-![img](Image\clip_image012.jpg)
+![img](Image/clip_image012.jpg)
 
-![img](Image\clip_image014.jpg)
+![img](Image/clip_image014.jpg)
 
  
 
