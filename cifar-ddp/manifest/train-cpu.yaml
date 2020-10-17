@@ -1,7 +1,7 @@
 apiVersion: "kubeflow.org/v1"
 kind: "PyTorchJob"
 metadata:
-  name: "pytorch-cifar-cpu"
+  name: "pytorch-cifar-train-cpu"
 spec:
   pytorchReplicaSpecs:
     Master:
@@ -15,11 +15,7 @@ spec:
           containers:
             - name: pytorch
               image: kubeflow/pytorch-cifar:1.0
-              # args: [--cuda]
-              # Comment out the below resources to use the CPU.
-              # resources: 
-              #   limits:
-              #     nvidia.com/gpu: 1
+              args: [train]
     Worker:
       replicas: 1
       restartPolicy: OnFailure
@@ -31,8 +27,4 @@ spec:
           containers: 
             - name: pytorch
               image: kubeflow/pytorch-cifar:1.0
-              # args: [--cuda]
-              # Comment out the below resources to use the CPU.
-              # resources: 
-              #   limits:
-              #     nvidia.com/gpu: 1
+              args: [train]
