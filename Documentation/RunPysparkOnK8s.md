@@ -51,7 +51,7 @@ You can use [this link](https://runnable.com/docker/python/dockerize-your-python
 ## Build Docker File
 
 ```bash
-./bin/docker-image-tool.sh -t my-tag -p Dockerfile build
+./bin/docker-image-tool.sh -t <my-tag> -p <Dockerfile> build
 ```
 
 ## Run Docker File
@@ -61,7 +61,7 @@ docker run -it <docker image> sh
 
 ## Submit Docker to K8s
 ```bash
-./bin/spark-submit --master k8s:///192.168.207.154:6443 --deploy-mode cluster --name pyspark-test --conf spark.executor.instances=1 --conf spark.kubernetes.container.image=<docker image> --conf spark.kubernetes.authenticate.driver.serviceAccountName=spark <filepath>
+./bin/spark-submit --master k8s:///192.168.207.154:6443 --deploy-mode cluster --name pyspark-test --conf spark.executor.instances=1 --conf spark.kubernetes.container.image=<docker image> --conf spark.kubernetes.authenticate.driver.serviceAccountName=spark <python file path>
 ```
 
 ## Further Details
