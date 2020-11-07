@@ -1,6 +1,8 @@
 import os
 import argparse
-from pywebhdfs.webhdfs import PyWebHdfsClient
+import cProfile
+import pstats
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -8,31 +10,14 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.distributed as dist
 
+from torch.utils.data.distributed import DistributedSampler
 from torchvision import datasets, transforms
 
 import utils
-
-class Net(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-
-    def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 16 * 5 * 5)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+import resnet
 
 
-def train():
+def train(args):
     CUDA = args.cuda and torch.cuda.is_available()
     print(f"CUDA: {CUDA}")
     
@@ -45,29 +30,41 @@ def train():
 
     if WORLD_SIZE > 1:
         print("> Initializing process group")
-        dist.init_process_group(backend=dist.Backend.GLOO)
+        dist.init_process_group(backend=args.backend)
     
     print("> Reading dataset from HDFS")
     utils.from_hdfs('data/cifar10/cifar-10-python.tar.gz', './data/cifar-10-python.tar.gz')
     
     print("> Creating train_loader")
+    trainset = datasets.CIFAR10('./data', train=True, download=True, transform=transforms.ToTensor())
+    if dist.is_initialized():
+        train_sampler = DistributedSampler(trainset, shuffle=True)
+    else:
+        train_sampler = None
     kwargs = {'num_workers': 1, 'pin_memory': True} if CUDA else {}
     train_loader = torch.utils.data.DataLoader(
-            datasets.CIFAR10('./data', train=True, download=True, transform=transforms.ToTensor()),
-            batch_size=args.batch_size, 
-            shuffle=True, 
+            trainset,
+            batch_size=args.batch_size,
+            sampler=train_sampler,
+            shuffle=train_sampler is None, 
             **kwargs
         )
     print("> Creating test_loader")
+    testset = datasets.CIFAR10('./data', train=False, download=True, transform=transforms.ToTensor())
+    if dist.is_initialized():
+        test_sampler = DistributedSampler(testset, shuffle=False)
+    else:
+        test_sampler = None
     test_loader = torch.utils.data.DataLoader(
-            datasets.CIFAR10('./data', train=False, download=True, transform=transforms.ToTensor()),
-            batch_size=args.test_batch_size, 
+            testset,
+            batch_size=args.test_batch_size,
+            sampler=test_sampler,
             shuffle=False, 
             **kwargs
         )
     
     print("> Initializing model")
-    model = Net().to(DEVICE)
+    model = resnet.get_resnet_model(args.model, version=args.version).to(DEVICE)
 
     if dist.is_initialized():
         print("> Initializing distributed model")
@@ -75,10 +72,18 @@ def train():
             else nn.parallel.DistributedDataParallelCPU
         model = Distributor(model)
         
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.SGD(model.parameters(), 
+                          lr=args.lr, 
+                          momentum=.9, 
+                          dampening=0, 
+                          weight_decay=1e-4, 
+                          nesterov=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, verbose=True)
     print("> Training: ")
     for epoch in range(1, args.epochs + 1):
         model.train()
+        if dist.is_initialized():
+            train_sampler.set_epoch(epoch)
         for batch_idx, (data, target) in enumerate(train_loader):
             data, target = data.to(DEVICE), target.to(DEVICE)
             optimizer.zero_grad()
@@ -104,7 +109,13 @@ def train():
                 correct += pred.eq(target.view_as(pred)).sum().item()
     
         test_loss /= len(test_loader.dataset)
-        print('\naccuracy={:.4f}\n'.format(float(correct) / len(test_loader.dataset)))
+        scheduler.step(test_loss)
+        
+        accuracy = float(correct) / len(test_loader.dataset)
+        print('\naccuracy={:.4f}\n'.format(accuracy))
+        
+        if accuracy >= 0.8:
+            break
     
     if RANK == 0:
         print("> Saving model")
@@ -114,7 +125,7 @@ def train():
         utils.to_hdfs('./model.pt', 'models/pytorch-cifar10.pt')
 
 
-def predict():
+def predict(args):
     CUDA = args.cuda and torch.cuda.is_available()
     print(f"CUDA: {CUDA}")
     
@@ -143,19 +154,28 @@ def predict():
     np.save('./prediction.npy', pred.cpu().numpy())
     utils.to_hdfs('./prediction.npy', 'data/cifar10/cifar10-prediction.npy')
 
-parser = argparse.ArgumentParser(description='PyTorch Distributed Data-Parallel Cifar10 Example')
+parser = argparse.ArgumentParser(description='PyTorch Distributed Data-Parallel Cifar10 Benchmark')
+parser.add_argument('--profile', action='store_true', default=False, 
+                    help='Profile execution (default: False)')
 subparsers = parser.add_subparsers()
 train_parser = subparsers.add_parser('train')
-train_parser.add_argument('--batch-size', type=int, default=64,
-                          help='Training batch size (default: 64)')
+train_parser.add_argument('--model', type=str, default='resnet20',
+                          help='Model (default: resnet20)')
+train_parser.add_argument('--version', type=int, default=1,
+                          help='Model version (default: 1)')
+train_parser.add_argument('--batch-size', type=int, default=128,
+                          help='Training batch size (default: 128)')
 train_parser.add_argument('--test-batch-size', type=int, default=1000,
                           help='Testing batch size (default: 1000)')
-train_parser.add_argument('--epochs', type=int, default=1,
-                          help='Number of training epochs (default: 1)')
-train_parser.add_argument('--lr', type=float, default=0.001,
-                          help='Learning rate (default: 0.001)')
+train_parser.add_argument('--epochs', type=int, default=10,
+                          help='Number of training epochs (default: 10)')
+train_parser.add_argument('--lr', type=float, default=0.02,
+                          help='Learning rate (default: 0.02)')
 train_parser.add_argument('--cuda', action='store_true', default=False,
                           help='Enable CUDA')
+train_parser.add_argument('--backend', type=str, default=dist.Backend.GLOO,
+                          choices=[dist.Backend.GLOO, dist.Backend.NCCL],
+                          help='Distributed backend')
 train_parser.add_argument('--seed', type=int, default=0,                    
                           help='Random seed (default: 0)')
 train_parser.add_argument('--log-interval', type=int, default=10,
@@ -164,22 +184,27 @@ train_parser.set_defaults(func=train)
 
 predict_parser = subparsers.add_parser('predict')
 predict_parser.add_argument('--cuda', action='store_true', default=False,
-                          help='enable CUDA')
+                            help='enable CUDA')
 predict_parser.set_defaults(func=predict)
 
 
 if __name__ == '__main__':
-    MASTER_ADDR = os.environ.get("MASTER_ADDR", "{}")
+    MASTER_ADDR = os.environ['MASTER_ADDR']
     print(f"MASTER_ADDR: {MASTER_ADDR}")
     
-    MASTER_PORT = os.environ.get("MASTER_PORT", "{}")
+    MASTER_PORT = os.environ['MASTER_PORT']
     print(f"MASTER_PORT: {MASTER_PORT}")
     
-    WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
+    WORLD_SIZE = int(os.environ['WORLD_SIZE'])
     print(f"WORLD_SIZE: {WORLD_SIZE}")
     
-    RANK = int(os.environ.get("RANK", "{}"))
+    RANK = int(os.environ['RANK'])
     print(f"RANK: {RANK}")
     
     args = parser.parse_args()
-    args.func()
+    if args.profile:
+        cProfile.run('args.func(args)', filename='profile.txt')
+        stats = pstats.Stats('profile.txt')
+        stats.strip_dirs().sort_stats(pstats.SortKey.CUMULATIVE).print_stats()
+    else:
+        args.func(args)

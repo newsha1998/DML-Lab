@@ -15,7 +15,7 @@ spec:
           containers:
             - name: pytorch
               image: kubeflow/pytorch-cifar:1.0
-              args: [train, --cuda]
+              args: ["--profile", "train", "--cuda", "--batch-size", "128", "--epochs", "20"]
               resources: 
                 limits:
                   nvidia.com/gpu: 1
